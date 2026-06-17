@@ -105,6 +105,28 @@ st.markdown(
         margin-bottom: 0.5rem;
     }
 
+    .match-card {
+        padding: 0.9rem 1rem;
+        border-radius: 16px;
+        border: 1px solid rgba(255,255,255,0.08);
+        background: rgba(8, 15, 28, 0.95);
+        margin-bottom: 0.75rem;
+    }
+    .match-card h4 {
+        margin: 0 0 0.35rem 0;
+        font-size: 1rem;
+        color: #f8fafc;
+    }
+    .match-card .meta {
+        color: #cbd5e1;
+        font-size: 0.92rem;
+        line-height: 1.45;
+    }
+    .match-card .score {
+        color: #f4a261;
+        font-weight: 700;
+    }
+
     </style>
     """,
     unsafe_allow_html=True,
@@ -336,13 +358,31 @@ if jd_file and resume_files:
             results_df = pd.DataFrame(rows)
             if match_threshold > 0:
                 results_df = results_df[results_df["score"] >= float(match_threshold)].reset_index(drop=True)
-                st.table(
-                    results_df[["candidate", "score", "semantic", "skill_overlap", "experience", "education", "certifications"]]
-                )
+
+            if results_df.empty:
+                st.warning("No candidates passed the selected threshold. Lower the threshold or upload better-matching resumes.")
+            else:
+                for idx, row in results_df.head(top_k).iterrows():
+                    st.markdown(
+                        f"""
+                        <div class="match-card">
+                            <h4>#{idx + 1} {row['candidate']}</h4>
+                            <div class="meta">
+                                <span class="score">Fit score: {row['score']:.1f}%</span><br/>
+                                Semantic: {row['semantic']:.1f}% | Skill overlap: {row['skill_overlap']:.1f}% |
+                                Experience: {row['experience']:.1f}% | Education: {row['education']:.1f}% |
+                                Certifications: {row['certifications']:.1f}%<br/>
+                                <strong>Profile:</strong> {row['summary']}<br/>
+                                <strong>Why matched:</strong> {row['reason']}
+                            </div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
             st.markdown('</div>', unsafe_allow_html=True)
 
-        if ranked:
-            selected_candidate = st.selectbox("Inspect a candidate", [item["candidate_name"] for item in ranked])
+        if not results_df.empty:
+            selected_candidate = st.selectbox("Inspect a candidate", results_df["candidate"].tolist())
             selected = next(item for item in ranked if item["candidate_name"] == selected_candidate)
             selected_profile = selected["candidate_profile"]
             gap = selected["skill_gap"]
@@ -372,7 +412,10 @@ if jd_file and resume_files:
 
             st.markdown('<div class="panel">', unsafe_allow_html=True)
             st.markdown('<div class="section-label">Ranking Snapshot</div>', unsafe_allow_html=True)
-            st.table(results_df)
+            snapshot_df = results_df[["candidate", "score", "semantic", "skill_overlap", "experience", "education", "certifications"]].copy()
+            for column in ["score", "semantic", "skill_overlap", "experience", "education", "certifications"]:
+                snapshot_df[column] = snapshot_df[column].map(lambda value: f"{float(value):.1f}")
+            st.table(snapshot_df)
             pdf_bytes = build_pdf_report(jd_profile, results_df, selected_result=selected)
             st.download_button(
                 "Download rankings CSV",
