@@ -100,6 +100,24 @@ Notes for production
 - Adjust ranking weights and scoring logic in `modules/pipeline.py` (`score_candidate` and related helpers).
 - Add or replace heuristic extractors with spaCy/transformer-based NER models in `modules/` for improved accuracy.
 
+## Retrieval modes (Top‑K vs Minimum‑threshold)
+
+Two common ways to retrieve candidates are **Top‑K** and **minimum‑threshold** (aka thresholded) retrieval:
+
+- **Top‑K**: return the K highest‑scoring items (fixed-size result). Use when you want a predictable shortlist size (e.g., show 5 candidates).
+- **Minimum‑threshold**: return all items whose score is greater than or equal to a threshold T (variable-size result). Use when you only want candidates that meet a quality bar.
+
+Best practice: use a hybrid pattern — request Top‑M from the index (M > K) to limit work, compute final normalized scores for those M items, filter by threshold T, then return up to K of the remaining items. This gives the predictability of Top‑K while ensuring minimum quality.
+
+Example hybrid flow:
+
+1. Get top‑M candidates from FAISS (fast).  M might be 5–10x the desired K.
+2. Compute full composite scores (semantic + skill overlap + experience, etc.) and normalize to 0–1.
+3. Filter candidates with score >= T (for instance 0.6).
+4. Sort the filtered list and take the top K results to present.
+
+Tune `K`, `M`, and `T` empirically on validation data (report `precision@K` and recall at threshold).
+
 ## Troubleshooting
 - "`streamlit` command not found": run `python -m streamlit run app.py` with the same interpreter used to install packages.
 - Large model downloads: ensure your environment has internet access, or pre-download models in a shared cache.
