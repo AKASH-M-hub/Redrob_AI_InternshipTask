@@ -336,11 +336,9 @@ if jd_file and resume_files:
             results_df = pd.DataFrame(rows)
             if match_threshold > 0:
                 results_df = results_df[results_df["score"] >= float(match_threshold)].reset_index(drop=True)
-            st.dataframe(
-                results_df[["candidate", "score", "semantic", "skill_overlap", "experience", "education", "certifications"]],
-                use_container_width=True,
-                hide_index=True,
-            )
+                st.table(
+                    results_df[["candidate", "score", "semantic", "skill_overlap", "experience", "education", "certifications"]]
+                )
             st.markdown('</div>', unsafe_allow_html=True)
 
         if ranked:
@@ -374,7 +372,7 @@ if jd_file and resume_files:
 
             st.markdown('<div class="panel">', unsafe_allow_html=True)
             st.markdown('<div class="section-label">Ranking Snapshot</div>', unsafe_allow_html=True)
-            st.dataframe(results_df, use_container_width=True, hide_index=True)
+            st.table(results_df)
             pdf_bytes = build_pdf_report(jd_profile, results_df, selected_result=selected)
             st.download_button(
                 "Download rankings CSV",
