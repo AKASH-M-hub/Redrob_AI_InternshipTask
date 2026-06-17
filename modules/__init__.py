@@ -1,5 +1,10 @@
-from .embeddings import get_embedding
-from .explainability import analyze_skill_gap, generate_reason
-from .jd_parser import parse_jd
-from .ranker import calculate_score
-from .resume_parser import extract_text_from_pdf, extract_text_from_upload, parse_resume
+"""`modules` package init.
+
+This file intentionally avoids importing submodules at package import time to
+prevent circular imports (importing `modules` should be lightweight).
+
+Use explicit imports like `from modules import pipeline` or
+`from modules.pipeline import analyze_document` where needed.
+"""
+
+__all__ = []

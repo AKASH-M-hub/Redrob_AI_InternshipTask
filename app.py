@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from io import BytesIO
+from importlib import import_module
 
 import pandas as pd
 import streamlit as st
@@ -12,7 +13,36 @@ from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import inch
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
-from modules.pipeline import analyze_document, build_profile_summary, extract_text_from_bytes, format_explanation, profile_text, rank_candidates, read_uploaded_file
+try:
+    pipeline = import_module("modules.pipeline")
+except Exception as import_error:
+    raise RuntimeError(f"Unable to import modules.pipeline: {import_error}") from import_error
+
+analyze_document = getattr(pipeline, "analyze_document")
+build_profile_summary = getattr(pipeline, "build_profile_summary")
+extract_text_from_bytes = getattr(pipeline, "extract_text_from_bytes")
+format_explanation = getattr(pipeline, "format_explanation")
+profile_text = getattr(pipeline, "profile_text")
+rank_candidates = getattr(pipeline, "rank_candidates")
+read_uploaded_file = getattr(pipeline, "read_uploaded_file")
+
+def _fallback_validate_document(filename, text, expected=None, min_confidence=0.5):
+    label = "resume" if filename and any(token in filename.lower() for token in ("resume", "cv")) else "jd"
+    return {
+        "filename": filename or "",
+        "filename_hint": label,
+        "content_hint": label,
+        "jd_sections": 0,
+        "resume_sections": 0,
+        "email_found": False,
+        "phone_found": False,
+        "final_label": label,
+        "confidence": 1.0,
+        "is_valid": expected is None or label == expected,
+        "min_confidence": float(min_confidence),
+    }
+
+validate_document = getattr(pipeline, "validate_document", _fallback_validate_document)
 
 
 st.set_page_config(page_title="AI Talent Match", page_icon="🧭", layout="wide")
@@ -74,6 +104,7 @@ st.markdown(
         color: #f4a261;
         margin-bottom: 0.5rem;
     }
+
     </style>
     """,
     unsafe_allow_html=True,
@@ -215,14 +246,57 @@ with st.sidebar:
             "It is the standard way to avoid showing the user every candidate when only the most relevant ones matter."
         )
 
-jd_file = st.file_uploader("Upload Job Description", type=["pdf", "txt"])
+jd_file = st.file_uploader(
+    "Upload Job Description (single file only)",
+    type=["pdf", "txt"],
+    accept_multiple_files=False,
+    help="Upload exactly one job description file. Multiple JDs are not supported in this upload box.",
+)
 resume_files = st.file_uploader("Upload Resumes", type=["pdf", "txt"], accept_multiple_files=True)
 
 if jd_file and resume_files:
     try:
+        # Validate JD file by filename + content before heavy parsing
+        jd_bytes = jd_file.getvalue()
+        jd_text = extract_text_from_bytes(jd_bytes, jd_file.name)
+        jd_check = validate_document(jd_file.name, jd_text, expected="jd", min_confidence=0.5)
+        if not jd_check.get("is_valid"):
+            st.warning(
+                f"Uploaded JD ({jd_file.name}) looks suspicious: detected label={jd_check.get('final_label')} (confidence={jd_check.get('confidence')}).\n"
+                "If this is not a JD file, parsing may fail or produce poor results."
+            )
+            st.error("Validation failed: upload a JD file whose filename and content both look like a JD.")
+            st.stop()
+
+        # Validate resumes and filter out files that clearly do not look like resumes
+        valid_resume_files = []
+        skipped_resumes = []
+        for rf in resume_files:
+            try:
+                rb = rf.getvalue()
+                rtext = extract_text_from_bytes(rb, rf.name)
+            except Exception:
+                rtext = ""
+            info = validate_document(rf.name, rtext, expected="resume", min_confidence=0.5)
+            if info.get("is_valid"):
+                valid_resume_files.append(rf)
+            else:
+                skipped_resumes.append({"name": rf.name, "label": info.get("final_label"), "confidence": info.get("confidence")})
+
+        if skipped_resumes:
+            st.warning(f"{len(skipped_resumes)} uploaded file(s) did not look like resumes and were skipped by default.")
+            for s in skipped_resumes:
+                st.write(f"- {s['name']}: detected={s['label']}, confidence={s['confidence']}")
+            st.info("Skipped files will not be included in matching. Rename them to match the correct resume format and upload again.")
+
+        if not valid_resume_files:
+            st.error("No valid resume files to process. Upload at least one resume file.")
+            st.stop()
+
         with st.spinner("Parsing documents and ranking candidates..."):
-            jd_profile = parse_uploaded_document(jd_file, jd_file.name)
-            resume_profiles = [parse_uploaded_document(resume_file, resume_file.name) for resume_file in resume_files]
+            # Parse JD and the validated resume files
+            jd_profile = analyze_document(jd_text, source_name=jd_file.name)
+            resume_profiles = [parse_uploaded_document(resume_file, resume_file.name) for resume_file in valid_resume_files]
             ranked = rank_candidates(jd_profile, resume_profiles, top_k=top_k)
 
         left, right = st.columns([1.0, 1.35], gap="large")

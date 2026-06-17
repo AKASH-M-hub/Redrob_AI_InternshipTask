@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 from functools import lru_cache
-from typing import Any, Dict, Iterable, List, Sequence
+from typing import Any, Dict, Iterable, List, Sequence, Optional
 
 import numpy as np
 from sklearn.feature_extraction.text import HashingVectorizer
@@ -363,3 +363,83 @@ def profile_text(profile: Dict[str, Any]) -> str:
     if profile.get("experience_years"):
         sections.append(f"Experience: {profile['experience_years']} years")
     return " | ".join(sections) if sections else "No structured profile detected"
+
+
+# Filename and content validation helpers
+JD_FILENAME_KEYWORDS = ["job", "jd", "job_description", "job-description", "jobdescription", "opening", "position"]
+RESUME_FILENAME_KEYWORDS = ["resume", "cv", "candidate", "application", "applicant"]
+
+JD_SECTION_KEYWORDS = ["responsibilities", "requirements", "qualifications", "skills required", "job description", "role"]
+RESUME_SECTION_KEYWORDS = ["experience", "education", "skills", "summary", "contact", "projects"]
+
+
+def classify_file_type(filename: str, text: str) -> Dict[str, Any]:
+    """Heuristic classification using filename tokens and simple content section checks.
+
+    Returns a dict with: filename_hint ('jd'|'resume'|'unknown'), content_hint, final_label, confidence (0-1),
+    and counts of detected sections. Content has higher weight than filename to avoid adversarial names.
+    """
+    fname = (filename or "").lower()
+    lowered = (text or "").lower()
+
+    filename_hint = "unknown"
+    if any(tok in fname for tok in JD_FILENAME_KEYWORDS):
+        filename_hint = "jd"
+    if any(tok in fname for tok in RESUME_FILENAME_KEYWORDS):
+        # prefer resume if resume keyword present
+        filename_hint = "resume"
+
+    jd_sections = sum(1 for kw in JD_SECTION_KEYWORDS if kw in lowered)
+    resume_sections = sum(1 for kw in RESUME_SECTION_KEYWORDS if kw in lowered)
+    email_found = bool(EMAIL_PATTERN.search(lowered))
+    phone_found = bool(PHONE_PATTERN.search(lowered))
+
+    content_hint = "unknown"
+    # simple rules: resumes usually have two or more resume sections or contact info
+    if resume_sections >= 2 or email_found or phone_found:
+        content_hint = "resume"
+    # JDs likely contain at least one JD section token and reasonable length
+    if jd_sections >= 1 and len(lowered) > 200:
+        content_hint = "jd"
+
+    # compute a confidence score: content (70%), filename (30%)
+    content_score = min(1.0, (resume_sections + jd_sections) / 3.0)
+    filename_score = 1.0 if filename_hint in ("jd", "resume") else 0.0
+    # bump content_score if contact info present (strong signal for resume)
+    if email_found or phone_found:
+        content_score = max(content_score, 0.6)
+
+    # final label: prefer content_hint when available
+    final_label = content_hint if content_hint != "unknown" else filename_hint
+    confidence = round(0.7 * content_score + 0.3 * filename_score, 2)
+
+    return {
+        "filename": filename or "",
+        "filename_hint": filename_hint,
+        "content_hint": content_hint,
+        "jd_sections": jd_sections,
+        "resume_sections": resume_sections,
+        "email_found": email_found,
+        "phone_found": phone_found,
+        "final_label": final_label,
+        "confidence": confidence,
+    }
+
+
+def validate_document(filename: str, text: str, expected: Optional[str] = None, min_confidence: float = 0.5) -> Dict[str, Any]:
+    """Validate a document by filename and content. If `expected` is provided ('jd' or 'resume'),
+    returns `is_valid` indicating whether the document likely matches expected type and confidence >= min_confidence.
+    """
+    info = classify_file_type(filename, text)
+    # Strict mode: require both filename and content to agree when an expected type is provided.
+    is_valid = True
+    if expected is not None:
+        is_valid = (
+            info["filename_hint"] == expected
+            and info["content_hint"] == expected
+            and info["final_label"] == expected
+            and info["confidence"] >= float(min_confidence)
+        )
+    else:
+        is_valid = info["confidence"] >= float(min_confidence)
+    return {**info, "is_valid": is_valid, "min_confidence": float(min_confidence)}
