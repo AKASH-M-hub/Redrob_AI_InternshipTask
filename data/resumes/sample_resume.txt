@@ -1,0 +1,23 @@
+Name: Aanya Sharma
+
+Professional Summary:
+Data analyst with 6 years of experience in Python, SQL, data analysis, and machine learning.
+
+Skills:
+- Python
+- SQL
+- Data Analysis
+- Machine Learning
+- Streamlit
+- Communication
+- Problem Solving
+
+Education:
+- Bachelor of Technology in Computer Science
+
+Certifications:
+- AWS Certified
+
+Experience:
+- Built analytics dashboards and ranking models for hiring workflows.
+- Worked with vector search and resume screening automation.

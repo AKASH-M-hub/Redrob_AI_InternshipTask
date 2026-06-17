@@ -1,0 +1,24 @@
+Job Title: AI Talent Match Analyst
+
+We are looking for a candidate with 5+ years of experience in data analysis, Python, SQL, and machine learning.
+
+Required Skills:
+- Python
+- SQL
+- Data Analysis
+- Machine Learning
+- Streamlit
+- FAISS vector search
+- Communication
+
+Education:
+- Bachelor of Technology or higher
+
+Preferred Certifications:
+- AWS Certified
+- PMP
+
+Responsibilities:
+- Build matching pipelines
+- Analyze resumes and job descriptions
+- Explain candidate fit and skill gaps
